@@ -1,8 +1,18 @@
+-- {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ExplicitForAll #-}
+-- {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ExistentialQuantification #-}
+
 import System.Random
 import Utils
 import NaiveTensor.NTensor
 
-data Df a = Discrete [a] [Float] | Continuous (a->Float)
+data NDSupport = forall a. (Eq a, Show a) => NDSupport a 
+
+instance Show NDSupport where 
+    show (NDSupport x) = show x
+
+data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
 
 instance (Show a) => Show (Df a) where 
     show (Discrete x y) = "Discrete " ++ (show x) ++ " " ++ (show y)
@@ -15,7 +25,7 @@ rand_uniform = do
         setStdGen nstdgen
         return p
 
-
+-- helper typeclass for sampling through inverse transform sampling method
 class Invertible d where 
     inverse :: d a -> Float -> a 
     samplingByInv :: d a -> IO a 
@@ -30,14 +40,9 @@ class Invertible d where
 class Distribution dist where 
     pdf :: dist a -> Df a
     cdf :: dist a -> Df a
-    sampling :: dist a -> IO a
-    nsampling :: Int -> dist a -> IO [a]
-
+    sampling :: (Eq a) => dist a -> IO a
+    nsampling :: (Eq a) => Int -> dist a -> IO [a]
     nsampling x da = sequence (map (\x -> sampling da) [1..x])
-
-    -- sampling da = samplingByInv (cdf da)
-    -- nsampling x da = nsamplingByInv x (cdf da)
-
 
 
 -- Categorical distribution 
@@ -50,11 +55,6 @@ instance Invertible CatCdf where
         where 
             index = find_index p prob
 
-
-accumulative :: [Float] -> [Float]
-accumulative (x1:x2:xs) = x1:(accumulative ((x1+x2):xs))
-accumulative [x] = [x]
-
 instance Distribution Categorical where
     pdf (Categorical sup prob) = Discrete sup prob
     cdf (Categorical sup prob) = Discrete sup nprob 
@@ -65,24 +65,43 @@ instance Distribution Categorical where
 
 
 -- multivariate categorical distribution
--- data D2Categorical a = D2Categorical [[a]] [[Float]] deriving (Show, Eq)
-
--- d2sampling :: (Eq a) => (D2Categorical a) -> IO ([a])
--- d2sampling (D2Categorical sups probs) = do 
---         let xsup = sups !! 0
---             xprob = marginal probs
---             xcat = Categorical xsup xprob
---         s <- sampling xcat 
---         let index = match_index xsup s 
---             ysup = sups !! 1
---             yprob = probs !! index 
---             ycat = Categorical ysup yprob
---         y <- sampling ycat 
-
---         return [s, y]
-
-
 data DNCategorical a = DNCategorical [DNCategorical a] [a] [Float] | D1Categorical (Categorical a) deriving (Show, Eq)
+
+
+
+data NTCategorical a = NTCategorical a (NaiveTensor Float) deriving (Show)
+
+build_NTCategorical :: (Eq a, Show a) => [[a]] -> (NaiveTensor Float) -> (NTCategorical NDSupport)
+build_NTCategorical (x:xs) nf = NTCategorical (NDSupport axs) nf 
+        where 
+            axs = foldl (++) x xs 
+
+build_DN_from_NT :: (Eq a, Show a) => (NTCategorical NDSupport) -> (DNCategorical a)
+build_DN_from_NT (NTCategorical (NDSupport flatten_sup) ntf) = build_DNCategorical sup ntf
+        where 
+            sup = unflatten (size ntf) flatten_sup
+
+ntsampling :: (NTCategorical NDSupport) -> IO (NDSupport)
+-- ntsampling :: (Eq a) => (NTCategorical a) -> IO (a)
+ntsampling cat@(NTCategorical (NDSupport flatten_sup) ntf) = do 
+        s <- dnsampling $ build_DN_from_NT cat
+        return (NDSupport s)
+
+
+-- instance Distribution NTCategorical where 
+--     pdf cat = NotAvaliable
+--     cdf cat = NotAvaliable
+--     -- sampling cat = dnsampling (build_DN_from_NT cat) 
+--     -- sampling cat@(NTCategorical (x:xs) ntf) = dnsampling $ build_DN_from_NT cat
+--     sampling cat = dnsampling $ build_DN_from_NT cat
+
+
+-- instance Distribution NTCategorical where 
+--     pdf cat = NotAvaliable
+--     cdf cat = NotAvaliable
+--     sampling = ntsampling
+
+
 
 build_DNCategorical :: (Eq a) => [[a]] -> (NaiveTensor Float) -> (DNCategorical a)
 build_DNCategorical [nsup] (Tensor nprob@((Leaf p):ps))
@@ -100,13 +119,23 @@ dnsampling (DNCategorical dist sup prob) = do
         let index = match_index sup s 
             sample = sup !! index
             nc = dist !! index
-        -- (dnsampling nc)>>=(\nsamples -> (sample:nsamples))
         nsamples <- dnsampling nc 
         return (sample:nsamples)
 
 dnsampling (D1Categorical cat) = do 
         sample <- sampling cat 
         return [sample]        
+
+
+-- -- Gaussian distribution 
+-- data Gaussian = Gaussian Float Float deriving (Show, Eq)
+
+-- instance Distribution Gaussian where
+--     pdf (Gaussian mean var) = mean
+--     cdf (Gaussian mean var) = NotAvaliable
+--     sampling cat = boxMuller cat
+
+
 
 
 main :: IO ()
@@ -130,10 +159,6 @@ main = do
     xs <- nsampling 10 cat 
     print xs
 
-    -- let d2cat = D2Categorical [["a", "b"], ["c", "d"]] [[0.1, 0.1], [0.3, 0.5]]
-    -- d2s <- d2sampling d2cat
-    -- print d2s
-
     let d1cat1 = D1Categorical (Categorical ["a","b","c"] [0.6, 0.2, 0.2])
         d1cat2 = D1Categorical (Categorical ["d","e","f"] [0.3, 0.2, 0.2])
         d2cat = DNCategorical [d1cat1, d1cat2] ["g", "h"] [0.8, 0.2]
@@ -146,3 +171,14 @@ main = do
     dns <- dnsampling d2uniform
     print "uniform"
     print dns
+
+    -- let d = build_DN_from_NT (build_NTCategorical [["a", "b"], ["c", "d"]] ntones)
+    -- print d
+    -- s <- dnsampling d 
+    -- print s
+
+
+    -- let d = build_NTCategorical [["a", "b"], ["c", "d"]] ntones
+    -- print d
+    -- s <- ntsampling d 
+    -- print s

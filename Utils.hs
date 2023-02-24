@@ -1,5 +1,10 @@
 
-module Utils (find_index, marginal, match_index) where 
+module Utils (find_index, 
+                marginal, 
+                match_index, 
+                unflatten,
+                accumulative
+                ) where 
 
 
 -- TODO: more efficient implementation 
@@ -8,6 +13,28 @@ find_index target (x:xs)
         | target < x  = 0 + (find_index target xs)
         | target >= x = 1 + (find_index target xs)
 find_index target [] = 0
+
+accumulative :: [Float] -> [Float]
+accumulative (x1:x2:xs) = x1:(accumulative ((x1+x2):xs))
+accumulative [x] = [x]
+
+slice :: (Eq a) => [Int] -> [a] -> [a]
+slice inds values = map (values !!) inds
+
+lsplitAt :: (Eq a) => Int -> [a] -> [[a]]
+lsplitAt n xs = [h, t]
+        where 
+                h = slice [0..(n-1)] xs 
+                t = slice [n .. (length xs)-1] xs
+
+
+unflatten :: (Eq a) => [Int] -> [a] -> [[a]]
+unflatten (i:is) values = h:(unflatten is t)
+        where 
+                [h, t] = lsplitAt i values
+unflatten [] _ = []
+
+
 
 marginal :: [[Float]] -> [Float]
 marginal xs = map sum xs
@@ -23,3 +50,5 @@ main :: IO ()
 main = do 
         let index = match_index ["a", "b", "c"] "c"
         print index
+        let v = unflatten [2,2] [1..4]
+        print v
