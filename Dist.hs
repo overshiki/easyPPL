@@ -1,5 +1,6 @@
 import System.Random
 import Utils
+import NaiveTensor.NTensor
 
 data Df a = Discrete [a] [Float] | Continuous (a->Float)
 
@@ -83,6 +84,15 @@ instance Distribution Categorical where
 
 data DNCategorical a = DNCategorical [DNCategorical a] [a] [Float] | D1Categorical (Categorical a) deriving (Show, Eq)
 
+build_DNCategorical :: (Eq a) => [[a]] -> (NaiveTensor Float) -> (DNCategorical a)
+build_DNCategorical [nsup] (Tensor nprob@((Leaf p):ps))
+                = D1Categorical (Categorical nsup _nprob)
+        where 
+            _nprob = map get_content nprob
+
+build_DNCategorical (nsup:xs) (Tensor nprob) = DNCategorical (map (build_DNCategorical xs) nprob) nsup (map tsum nprob)
+
+
 dnsampling :: (Eq a) => (DNCategorical a) -> IO ([a])
 dnsampling (DNCategorical dist sup prob) = do 
         let cat = Categorical sup prob 
@@ -128,4 +138,11 @@ main = do
         d1cat2 = D1Categorical (Categorical ["d","e","f"] [0.3, 0.2, 0.2])
         d2cat = DNCategorical [d1cat1, d1cat2] ["g", "h"] [0.8, 0.2]
     dns <- dnsampling d2cat
+    print dns
+
+    let ntones = ones [2,2]
+        d2uniform = build_DNCategorical [["a", "b"], ["c", "d"]] ntones
+
+    dns <- dnsampling d2uniform
+    print "uniform"
     print dns
