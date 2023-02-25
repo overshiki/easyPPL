@@ -6,6 +6,7 @@
 import System.Random
 import Utils
 import NaiveTensor.NTensor
+import NaiveTensor.Broadcast
 
 
 data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
@@ -77,17 +78,15 @@ ntsampling (NTCategorical (Tensor sup) (Tensor prob@((Tensor x):xs))) = do
                         nindices <- ntsampling nnt 
                         return (index:nindices)                                                
                         where 
-                            _len = length prob
                             nprob = map tsum prob
-                            dist = Categorical [0.._len-1] nprob
+                            dist = Categorical (rangelike nprob) nprob
 
 ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do 
                         index <- sampling dist 
                         return [index]
                         where 
-                            _len = length prob 
                             nprob = map get_content prob 
-                            dist = Categorical [0.._len-1] nprob
+                            dist = Categorical (rangelike nprob) nprob
 
 instance Distribution NTCategorical where 
     pdf _ = NotAvaliable
@@ -97,8 +96,6 @@ instance Distribution NTCategorical where
         return $ tselect indices sup
 
 
-
-    
 
 
 -- -- Gaussian distribution 
@@ -133,29 +130,6 @@ main = do
     xs <- nsampling 10 cat 
     print xs
 
-    -- let d1cat1 = D1Categorical (Categorical ["a","b","c"] [0.6, 0.2, 0.2])
-    --     d1cat2 = D1Categorical (Categorical ["d","e","f"] [0.3, 0.2, 0.2])
-    --     d2cat = DNCategorical [d1cat1, d1cat2] ["g", "h"] [0.8, 0.2]
-    -- dns <- dnsampling d2cat
-    -- print dns
-
-    -- let ntones = ones [2,2]
-    --     d2uniform = build_DNCategorical [["a", "b"], ["c", "d"]] ntones
-
-    -- dns <- dnsampling d2uniform
-    -- print "uniform"
-    -- print dns
-
-    -- let d = build_DN_from_NT (build_NTCategorical [["a", "b"], ["c", "d"]] ntones)
-    -- print d
-    -- s <- dnsampling d 
-    -- print s
-
-
-    -- let d = build_NTCategorical [["a", "b"], ["c", "d"]] ntones
-    -- print d
-    -- s <- ntsampling d 
-    -- print s
 
     let d = NTCategorical (ones [2,2]) ((ones [2,2])::(NaiveTensor Float))
     s <- ntsampling d 

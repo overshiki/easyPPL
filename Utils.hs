@@ -3,7 +3,8 @@ module Utils (find_index,
                 marginal, 
                 match_index, 
                 unflatten,
-                accumulative
+                accumulative,
+                rangelike
                 ) where 
 
 
@@ -20,6 +21,12 @@ accumulative [x] = [x]
 
 slice :: (Eq a) => [Int] -> [a] -> [a]
 slice inds values = map (values !!) inds
+
+rangelike :: [a] -> [Int]
+rangelike targets = [0.._len]
+        where 
+                _len = (length targets) - 1
+
 
 lsplitAt :: (Eq a) => Int -> [a] -> [[a]]
 lsplitAt n xs = [h, t]
