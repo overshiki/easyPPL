@@ -51,11 +51,10 @@ data Categorical a = Categorical [a] [Float] deriving (Show, Eq)
 data CatCdf a = CatCdf (Df a) deriving (Show)
 instance Invertible CatCdf where 
     -- inverse (CatCdf (Discrete sup prob)) p = sup !! index
-    inverse (CatCdf (Discrete (Tensor sup) prob)) p = get_content $ unpack $ matchSelect index sup
+    inverse (CatCdf (Discrete (Tensor sup) prob)) p = get_content $ sup !! index
         where 
-            unpack (Just x) = x
             -- index = find_index p prob
-            index = (find_inBetween p prob) !! 0
+            index = (find_inBetween_index p prob) !! 0
 
 instance Distribution Categorical where
     pdf (Categorical sup prob) = Discrete (totensor sup) (totensor prob)

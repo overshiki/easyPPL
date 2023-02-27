@@ -10,7 +10,7 @@ module Utils (find_index,
 -- TODO: more efficient implementation 
 find_index :: Float -> [Float] -> Int 
 find_index target (x:xs)
-        | target < x  = 0 + (find_index target xs)
+        | target < x  = 0
         | target >= x = 1 + (find_index target xs)
 find_index target [] = 0
 
