@@ -7,7 +7,6 @@ module Utils (find_index,
                 rangelike
                 ) where 
 
-
 -- TODO: more efficient implementation 
 find_index :: Float -> [Float] -> Int 
 find_index target (x:xs)

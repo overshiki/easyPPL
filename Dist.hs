@@ -6,10 +6,12 @@
 import System.Random
 import Utils
 import NaiveTensor.NTensor
+import NaiveTensor.Order
 import NaiveTensor.Broadcast
 
 
-data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
+-- data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
+data Df a = Discrete (NaiveTensor a) (NaiveTensor Float) | Continuous (a->Float) | NotAvaliable
 
 instance (Show a) => Show (Df a) where 
     show (Discrete x y) = "Discrete " ++ (show x) ++ " " ++ (show y)
@@ -48,14 +50,20 @@ data Categorical a = Categorical [a] [Float] deriving (Show, Eq)
 
 data CatCdf a = CatCdf (Df a) deriving (Show)
 instance Invertible CatCdf where 
-    inverse (CatCdf (Discrete sup prob)) p = sup !! index
+    -- inverse (CatCdf (Discrete sup prob)) p = sup !! index
+    inverse (CatCdf (Discrete (Tensor sup) prob)) p = get_content $ unpack $ matchSelect index sup
         where 
-            index = find_index p prob
+            unpack (Just x) = x
+            -- index = find_index p prob
+            index = (find_inBetween p prob) !! 0
 
 instance Distribution Categorical where
-    pdf (Categorical sup prob) = Discrete sup prob
-    cdf (Categorical sup prob) = Discrete sup nprob 
+    pdf (Categorical sup prob) = Discrete (totensor sup) (totensor prob)
             where 
+                totensor xs = Tensor (map Leaf xs)
+    cdf (Categorical sup prob) = Discrete (totensor sup) (totensor nprob) 
+            where 
+                totensor xs = Tensor (map Leaf xs)
                 nprob = map (/(sum prob)) (accumulative prob) 
 
     sampling cat = samplingByInv (CatCdf $ cdf cat)
@@ -116,9 +124,6 @@ main = do
     print $ cdf cat
     let (Discrete sup prob) = cdf cat 
     print $ prob
-    print $ find_index 0.3 prob
-    print $ find_index 0.7 prob
-    print $ find_index 0.9 prob
 
     s <- samplingByInv (CatCdf (cdf cat)) 
     print s
