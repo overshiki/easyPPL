@@ -96,12 +96,11 @@ ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do
                             dist = Categorical (rangelike nprob) nprob
 
 instance Distribution NTCategorical where 
-    pdf _ = NotAvaliable
+    pdf (NTCategorical sup prob) = Discrete sup prob
     cdf _ = NotAvaliable
     sampling nt@(NTCategorical sup prob) = do 
         indices <- ntsampling nt 
         return $ tselect indices sup
-
 
 
 
