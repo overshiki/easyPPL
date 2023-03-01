@@ -2,6 +2,8 @@
 -- {-# LANGUAGE ExplicitForAll #-}
 -- {-# LANGUAGE RankNTypes #-}
 -- {-# LANGUAGE ExistentialQuantification #-}
+-- {-# LANGUAGE InstanceSigs #-}
+
 
 import System.Random
 import Utils
@@ -40,9 +42,12 @@ class Invertible d where
 class Distribution dist where 
     pdf :: dist a -> Df a
     cdf :: dist a -> Df a
-    sampling :: (Eq a) => dist a -> IO a
-    direct_sampling :: (Eq a) => dist a -> IO a
-    nsampling :: (Eq a) => Int -> dist a -> IO [a]
+    sampling :: dist a -> IO a
+    direct_sampling :: dist a -> IO a
+    nsampling :: Int -> dist a -> IO [a]
+
+    pdf x = NotAvaliable
+    cdf x = NotAvaliable
     direct_sampling = sampling
     nsampling x da = sequence (map (\x -> sampling da) [1..x])
 
@@ -127,15 +132,27 @@ instance Distribution NTCategorical where
     direct_sampling cat = samplingByInv (NTCatCdf $ cdf cat)
 
 
--- -- Gaussian distribution 
--- data Gaussian = Gaussian Float Float deriving (Show, Eq)
-
--- instance Distribution Gaussian where
---     pdf (Gaussian mean var) = mean
---     cdf (Gaussian mean var) = NotAvaliable
---     sampling cat = boxMuller cat
 
 
+-- Gaussian distribution
+type Mean = Float
+type Std = Float 
+data Gaussian a = Gaussian (Float->a) Mean Std 
+
+instance (Show a) => Show (Gaussian a) where 
+    show (Gaussian supfunc m std) = "Gaussian " ++ (show m) ++ " " ++ (show std)
+
+boxMuller :: IO Float
+boxMuller = do 
+        u1 <- rand_uniform
+        u2 <- rand_uniform
+        let u = (sqrt ((-1) * (log (u1)))) * (sin (2 * pi * u2))
+        return u
+
+instance Distribution Gaussian where
+    sampling (Gaussian supfunc m std) = do 
+        u <- boxMuller
+        return (supfunc ((u+m) * std))
 
 
 main :: IO ()
@@ -172,4 +189,14 @@ main = do
     s <- check_inBetween_index d 
     print s
     s <- direct_sampling d 
+    print s
+    s <- boxMuller
+    print s 
+    s <- boxMuller
+    print s
+
+    let d = Gaussian id 0.0 1.0 
+    s <- sampling d 
+    print s 
+    s <- nsampling 10 d 
     print s
