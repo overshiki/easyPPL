@@ -3,7 +3,7 @@ module Utils (find_index,
                 marginal, 
                 match_index, 
                 unflatten,
-                accumulative,
+                -- accumulative,
                 rangelike
                 ) where 
 
@@ -14,9 +14,9 @@ find_index target (x:xs)
         | target >= x = 1 + (find_index target xs)
 find_index target [] = 0
 
-accumulative :: [Float] -> [Float]
-accumulative (x1:x2:xs) = x1:(accumulative ((x1+x2):xs))
-accumulative [x] = [x]
+-- accumulative :: [Float] -> [Float]
+-- accumulative (x1:x2:xs) = x1:(accumulative ((x1+x2):xs))
+-- accumulative [x] = [x]
 
 slice :: (Eq a) => [Int] -> [a] -> [a]
 slice inds values = map (values !!) inds

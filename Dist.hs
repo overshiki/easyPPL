@@ -8,6 +8,7 @@ import Utils
 import NaiveTensor.NTensor
 import NaiveTensor.Order
 import NaiveTensor.Broadcast
+import NaiveTensor.Statistic
 
 
 -- data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
@@ -40,7 +41,9 @@ class Distribution dist where
     pdf :: dist a -> Df a
     cdf :: dist a -> Df a
     sampling :: (Eq a) => dist a -> IO a
+    direct_sampling :: (Eq a) => dist a -> IO a
     nsampling :: (Eq a) => Int -> dist a -> IO [a]
+    direct_sampling = sampling
     nsampling x da = sequence (map (\x -> sampling da) [1..x])
 
 
@@ -50,20 +53,18 @@ data Categorical a = Categorical [a] [Float] deriving (Show, Eq)
 
 data CatCdf a = CatCdf (Df a) deriving (Show)
 instance Invertible CatCdf where 
-    -- inverse (CatCdf (Discrete sup prob)) p = sup !! index
     inverse (CatCdf (Discrete (Tensor sup) prob)) p = get_content $ sup !! index
         where 
-            -- index = find_index p prob
             index = (find_inBetween_index p prob) !! 0
 
 instance Distribution Categorical where
     pdf (Categorical sup prob) = Discrete (totensor sup) (totensor prob)
             where 
                 totensor xs = Tensor (map Leaf xs)
-    cdf (Categorical sup prob) = Discrete (totensor sup) (totensor nprob) 
+    cdf (Categorical sup prob) = Discrete (totensor sup) (accumulate (totensor prob)) 
             where 
                 totensor xs = Tensor (map Leaf xs)
-                nprob = map (/(sum prob)) (accumulative prob) 
+                -- nprob = map (/(sum prob)) (accumulative prob) 
 
     sampling cat = samplingByInv (CatCdf $ cdf cat)
 
@@ -95,13 +96,35 @@ ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do
                             nprob = map get_content prob 
                             dist = Categorical (rangelike nprob) nprob
 
+
+data NTCatCdf a = NTCatCdf (Df a) deriving (Show)
+instance Invertible NTCatCdf where 
+    inverse (NTCatCdf (Discrete sup prob)) p = tselect indices sup
+        where 
+            indices = find_inBetween_index p prob
+
+check_inBetween_index :: (NTCategorical a) -> IO ([Int])
+check_inBetween_index nt = do 
+            p <- rand_uniform
+            print p
+            let (Discrete sup prob) = cdf nt 
+            print prob
+            return $ find_inBetween_index p prob
+
+
+normalize :: (Df a) -> (Df a)
+normalize (Discrete sup prob) = Discrete sup (_normalize prob)
+        where 
+            _normalize nt = fmap (/(nt_max nt)) nt
+
 instance Distribution NTCategorical where 
     pdf (NTCategorical sup prob) = Discrete sup prob
-    cdf _ = NotAvaliable
+    cdf (NTCategorical sup prob) = normalize $ Discrete sup (accumulate prob)
     sampling nt@(NTCategorical sup prob) = do 
         indices <- ntsampling nt 
         return $ tselect indices sup
-
+    
+    direct_sampling cat = samplingByInv (NTCatCdf $ cdf cat)
 
 
 -- -- Gaussian distribution 
@@ -140,7 +163,13 @@ main = do
     s <- sampling d 
     print s
 
-    let d = build_NTCategorical [["a","b"], ["c", "d"]] (ones [2,2])
+    let d = build_NTCategorical [["a","b"], ["c", "d"]] ((ones [2,2])::(NaiveTensor Float))
     print d
     s <- sampling d 
+    print s
+    print d
+    print $ cdf d
+    s <- check_inBetween_index d 
+    print s
+    s <- direct_sampling d 
     print s
