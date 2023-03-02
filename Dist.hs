@@ -16,6 +16,10 @@ import NaiveTensor.Statistic
 -- data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
 data Df a = Discrete (NaiveTensor a) (NaiveTensor Float) | Continuous (a->Float) | NotAvaliable
 
+apply :: Df a -> a -> Float
+apply (Continuous func) x = func x
+
+
 instance (Show a) => Show (Df a) where 
     show (Discrete x y) = "Discrete " ++ (show x) ++ " " ++ (show y)
     show (Continuous func) = "Continuous_func"
@@ -39,6 +43,34 @@ class Invertible d where
     nsamplingByInv x da = sequence (map (\x -> samplingByInv da) [1..x]) 
 
 
+-- For Categorical distribution 
+data CatCdf a = CatCdf (Df a) deriving (Show)
+instance Invertible CatCdf where 
+    inverse (CatCdf (Discrete (Tensor sup) prob)) p = get_content $ sup !! index
+        where 
+            index = (find_inBetween_index p prob) !! 0
+
+
+-- For Multivariate categorical distribution using NaiveTensor
+data NTCatCdf a = NTCatCdf (Df a) deriving (Show)
+instance Invertible NTCatCdf where 
+    inverse (NTCatCdf (Discrete sup prob)) p = tselect indices sup
+        where 
+            indices = find_inBetween_index p prob
+
+
+
+class MarginalFoldable d where 
+    marginal :: d a -> d a
+
+-- For Multivariate categorical distribution using NaiveTensor
+-- instance MarginalFoldable NTCatCdf where 
+    -- marginal (NTCatCdf (Discrete sup prob)) = 
+
+
+
+-- Distribution 
+
 class Distribution dist where 
     pdf :: dist a -> Df a
     cdf :: dist a -> Df a
@@ -55,12 +87,6 @@ class Distribution dist where
 -- Categorical distribution 
 data Categorical a = Categorical [a] [Float] deriving (Show, Eq)
 
-
-data CatCdf a = CatCdf (Df a) deriving (Show)
-instance Invertible CatCdf where 
-    inverse (CatCdf (Discrete (Tensor sup) prob)) p = get_content $ sup !! index
-        where 
-            index = (find_inBetween_index p prob) !! 0
 
 instance Distribution Categorical where
     pdf (Categorical sup prob) = Discrete (totensor sup) (totensor prob)
@@ -102,21 +128,6 @@ ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do
                             dist = Categorical (rangelike nprob) nprob
 
 
-data NTCatCdf a = NTCatCdf (Df a) deriving (Show)
-instance Invertible NTCatCdf where 
-    inverse (NTCatCdf (Discrete sup prob)) p = tselect indices sup
-        where 
-            indices = find_inBetween_index p prob
-
-check_inBetween_index :: (NTCategorical a) -> IO ([Int])
-check_inBetween_index nt = do 
-            p <- rand_uniform
-            print p
-            let (Discrete sup prob) = cdf nt 
-            print prob
-            return $ find_inBetween_index p prob
-
-
 normalize :: (Df a) -> (Df a)
 normalize (Discrete sup prob) = Discrete sup (_normalize prob)
         where 
@@ -137,10 +148,10 @@ instance Distribution NTCategorical where
 -- Gaussian distribution
 type Mean = Float
 type Std = Float 
-data Gaussian a = Gaussian (Float->a) Mean Std 
+data Gaussian a = Gaussian (Float->a) (a->Float) Mean Std 
 
 instance (Show a) => Show (Gaussian a) where 
-    show (Gaussian supfunc m std) = "Gaussian " ++ (show m) ++ " " ++ (show std)
+    show (Gaussian supfunc revfunc m std) = "Gaussian " ++ (show m) ++ " " ++ (show std)
 
 boxMuller :: IO Float
 boxMuller = do 
@@ -150,7 +161,11 @@ boxMuller = do
         return u
 
 instance Distribution Gaussian where
-    sampling (Gaussian supfunc m std) = do 
+    pdf (Gaussian supfunc revfunc m std) = Continuous (gpdf . revfunc)
+            where 
+                gpdf x = (1.0/(std * (sqrt (2 * pi)))) * (exp ((-1) * (x - m)^2/(2 * std^2)))
+
+    sampling (Gaussian supfunc revfunc m std) = do 
         u <- boxMuller
         return (supfunc ((u+m) * std))
 
@@ -186,8 +201,6 @@ main = do
     print s
     print d
     print $ cdf d
-    s <- check_inBetween_index d 
-    print s
     s <- direct_sampling d 
     print s
     s <- boxMuller
@@ -195,8 +208,11 @@ main = do
     s <- boxMuller
     print s
 
-    let d = Gaussian id 0.0 1.0 
+    let d = Gaussian id id 0.0 1.0 
     s <- sampling d 
     print s 
     s <- nsampling 10 d 
     print s
+    print $ map (apply (pdf d)) s
+    s <- sampling d
+    print $ apply (pdf d) s
