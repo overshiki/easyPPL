@@ -11,6 +11,7 @@ import NaiveTensor.NTensor
 import NaiveTensor.Order
 import NaiveTensor.Broadcast
 import NaiveTensor.Statistic
+import NaiveTensor.Reduce
 
 
 -- data Df a = Discrete [a] [Float] | Continuous (a->Float) | NotAvaliable
@@ -19,6 +20,15 @@ data Df a = Discrete (NaiveTensor a) (NaiveTensor Float) | Continuous (a->Float)
 apply :: Df a -> a -> Float
 apply (Continuous func) x = func x
 
+cdf_normalize :: (Df a) -> (Df a)
+cdf_normalize (Discrete sup prob) = Discrete sup (_normalize prob)
+        where 
+            _normalize nt = fmap (/(nt_max nt)) nt
+
+normalize :: (Df a) -> (Df a)
+normalize (Discrete sup prob) = Discrete sup (_normalize prob)
+        where 
+            _normalize nt = fmap (/(tsum nt)) nt
 
 instance (Show a) => Show (Df a) where 
     show (Discrete x y) = "Discrete " ++ (show x) ++ " " ++ (show y)
@@ -61,13 +71,23 @@ instance Invertible NTCatCdf where
 
 
 class MarginalFoldable d where 
-    marginal :: d a -> d a
+    marginal :: ([a] -> a) -> d a -> d a
 
 -- For Multivariate categorical distribution using NaiveTensor
--- instance MarginalFoldable NTCatCdf where 
-    -- marginal (NTCatCdf (Discrete sup prob)) = 
+data NTCatPdf a = NTCatPdf (Df a) deriving (Show)
+
+instance MarginalFoldable NTCatPdf where 
+    marginal sup_reduce_func (NTCatPdf (Discrete sup prob)) = NTCatPdf (normalize (Discrete nsup nprob))
+                where 
+                    nprob = reduceOnce sum prob
+                    nsup = reduceOnce sup_reduce_func sup
 
 
+canonical_ntcat_supreduce :: [[a]] -> [a]
+canonical_ntcat_supreduce (x:xs) = topMinusOne x 
+        where 
+            topMinusOne = reverse . tail . reverse
+canonical_ntcat_supreduce [] = []
 
 -- Distribution 
 
@@ -89,7 +109,7 @@ data Categorical a = Categorical [a] [Float] deriving (Show, Eq)
 
 
 instance Distribution Categorical where
-    pdf (Categorical sup prob) = Discrete (totensor sup) (totensor prob)
+    pdf (Categorical sup prob) = normalize $ Discrete (totensor sup) (totensor prob)
             where 
                 totensor xs = Tensor (map Leaf xs)
     cdf (Categorical sup prob) = Discrete (totensor sup) (accumulate (totensor prob)) 
@@ -128,14 +148,11 @@ ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do
                             dist = Categorical (rangelike nprob) nprob
 
 
-normalize :: (Df a) -> (Df a)
-normalize (Discrete sup prob) = Discrete sup (_normalize prob)
-        where 
-            _normalize nt = fmap (/(nt_max nt)) nt
+
 
 instance Distribution NTCategorical where 
-    pdf (NTCategorical sup prob) = Discrete sup prob
-    cdf (NTCategorical sup prob) = normalize $ Discrete sup (accumulate prob)
+    pdf (NTCategorical sup prob) = normalize $ Discrete sup prob
+    cdf (NTCategorical sup prob) = cdf_normalize $ Discrete sup (accumulate prob)
     sampling nt@(NTCategorical sup prob) = do 
         indices <- ntsampling nt 
         return $ tselect indices sup
@@ -216,3 +233,10 @@ main = do
     print $ map (apply (pdf d)) s
     s <- sampling d
     print $ apply (pdf d) s
+
+
+    let d = build_NTCategorical [["a","b"], ["c", "d"]] ((ones [2,2])::(NaiveTensor Float))
+        ntpdf = NTCatPdf $ pdf d 
+    print ntpdf
+    let rntpdf = marginal canonical_ntcat_supreduce ntpdf
+    print rntpdf

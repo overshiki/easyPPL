@@ -1,6 +1,6 @@
 
 module Utils (find_index, 
-                marginal, 
+                -- marginal, 
                 match_index, 
                 unflatten,
                 -- accumulative,
@@ -42,8 +42,8 @@ unflatten [] _ = []
 
 
 
-marginal :: [[Float]] -> [Float]
-marginal xs = map sum xs
+-- marginal :: [[Float]] -> [Float]
+-- marginal xs = map sum xs
 
 match_index :: (Eq a) => [a] -> a -> Int 
 match_index (x:xs) t
