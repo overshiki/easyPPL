@@ -71,7 +71,7 @@ instance Invertible NTCatCdf where
 
 
 class MarginalFoldable d where 
-    marginal :: ([a] -> a) -> d a -> d a
+    marginal :: (a-> a -> a) -> d a -> d a
 
 -- For Multivariate categorical distribution using NaiveTensor
 data NTCatPdf a = NTCatPdf (Df a) deriving (Show)
@@ -79,15 +79,14 @@ data NTCatPdf a = NTCatPdf (Df a) deriving (Show)
 instance MarginalFoldable NTCatPdf where 
     marginal sup_reduce_func (NTCatPdf (Discrete sup prob)) = NTCatPdf (normalize (Discrete nsup nprob))
                 where 
-                    nprob = reduceOnce sum prob
+                    nprob = reduceOnce (+) prob
                     nsup = reduceOnce sup_reduce_func sup
 
 
-canonical_ntcat_supreduce :: [[a]] -> [a]
-canonical_ntcat_supreduce (x:xs) = topMinusOne x 
+canonical_ntcat_supreduce :: [a] -> [a] -> [a]
+canonical_ntcat_supreduce x _ = topMinusOne x 
         where 
             topMinusOne = reverse . tail . reverse
-canonical_ntcat_supreduce [] = []
 
 -- Distribution 
 
@@ -134,6 +133,7 @@ ntsampling (NTCategorical (Tensor sup) (Tensor prob@((Tensor x):xs))) = do
                         let nprob = prob !! index 
                             nsup = sup !! index
                             nnt = NTCategorical nsup nprob
+
                         nindices <- ntsampling nnt 
                         return (index:nindices)                                                
                         where 
@@ -146,6 +146,17 @@ ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do
                         where 
                             nprob = map get_content prob 
                             dist = Categorical (rangelike nprob) nprob
+
+
+strict_sampling :: (NTCategorical a) -> IO (a)
+strict_sampling (NTCategorical (Tensor sup) prob@(Tensor ps)) = do 
+                (nsup, nprob) <- sampling dist 
+                return (strict_sampling (NTCategorical nsup nprob)) 
+
+                where 
+                    -- nsup = reduceHead canonical_ntcat_supreduce sup 
+                    nprob = reduceHead (+) prob
+                    dist = Categorical (zip sup ps) nprob
 
 
 
