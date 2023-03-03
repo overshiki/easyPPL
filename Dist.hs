@@ -149,24 +149,32 @@ ntsampling (NTCategorical sup (Tensor prob@((Leaf x):xs))) = do
 
 
 strict_sampling :: (NTCategorical a) -> IO (a)
-strict_sampling (NTCategorical (Tensor sup) prob@(Tensor ps)) = do 
+strict_sampling (NTCategorical (Tensor sup@((Tensor x):xs)) prob@(Tensor ps)) = do 
                 (nsup, nprob) <- sampling dist 
-                return (strict_sampling (NTCategorical nsup nprob)) 
+                strict_sampling (NTCategorical nsup nprob) 
 
                 where 
                     -- nsup = reduceHead canonical_ntcat_supreduce sup 
-                    nprob = reduceHead (+) prob
-                    dist = Categorical (zip sup ps) nprob
+                    (Tensor nprob) = reduceHead (+) prob
+                    dist = Categorical (zip sup ps) (map get_content nprob)
 
+strict_sampling (NTCategorical (Tensor sup@((Leaf x):xs)) prob@(Tensor ps)) = do
+                s <- sampling dist 
+                return s 
+                where 
+                    nprob = map get_content ps 
+                    nsup = map get_content sup
+                    dist = Categorical nsup nprob
 
 
 
 instance Distribution NTCategorical where 
     pdf (NTCategorical sup prob) = normalize $ Discrete sup prob
     cdf (NTCategorical sup prob) = cdf_normalize $ Discrete sup (accumulate prob)
-    sampling nt@(NTCategorical sup prob) = do 
-        indices <- ntsampling nt 
-        return $ tselect indices sup
+    -- sampling nt@(NTCategorical sup prob) = do 
+    --     indices <- ntsampling nt 
+    --     return $ tselect indices sup
+    sampling = strict_sampling
     
     direct_sampling cat = samplingByInv (NTCatCdf $ cdf cat)
 
@@ -251,3 +259,6 @@ main = do
     print ntpdf
     let rntpdf = marginal canonical_ntcat_supreduce ntpdf
     print rntpdf
+
+    s <- strict_sampling d 
+    print s
